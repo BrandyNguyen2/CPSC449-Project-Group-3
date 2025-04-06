@@ -23,7 +23,7 @@ def is_valid_email(email):
     return re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email)
 
 # User login
-@app.route('/login', METHOD=['POST'])
+@app.route('/login', methods=['POST'])
 def login():
     if not request.json or 'username' not in request.json or 'password' not in request.json:
         return jsonify({'error': 'Invalid input'}), 400
@@ -41,7 +41,7 @@ def login():
     return response, 200
 
 # User registration 
-@app.route('/register', METHOD=['POST'])
+@app.route('/register', methods=['POST'])
 def register():
     if not request.json or 'username' not in request.json or 'password' not in request.json or 'email' not in request.json:
         return jsonify({'error': 'Invalid input'}), 400
@@ -63,7 +63,7 @@ def register():
     return jsonify({'message': 'User registered successfully'}), 201
 
 # User logout
-@app.route('/logout', METHOD=['POST'])
+@app.route('/logout', methods=['POST'])
 def logout():
     session.pop('username', None)
     response = jsonify({'message': 'Logout successful'})
@@ -78,7 +78,7 @@ def require_login():
     
 # Inventory management (CRUD) 
 # USERS NEEDS TO BE AUTHORIZED TO ACCESS THESE FUNCTIONS
-@app.route('/createInventoryItem', METHOD=['POST'])
+@app.route('/createInventoryItem', methods=['POST'])
 def create_inventory_item():
     required_fields = ['name', 'description', 'quantity', 'price']
     if not request.json or not all(field in request.json for field in required_fields):
@@ -89,15 +89,15 @@ def create_inventory_item():
     inventory.append(inventory_item)
     return jsonify(inventory_item), 201
 
-@app.route('/readInventoryItem', METHOD=['GET'])
+@app.route('/readInventoryItem', methods=['GET'])
 def read_inventory_item():
-    return 'Item read'
+    return jsonify(inventory)
 
-@app.route('/updateInventoryItem', METHOD=['PUT'])
+@app.route('/updateInventoryItem', methods=['PUT'])
 def update_inventory_item():
     return 'Item updated'
 
-@app.route('/deleteInventoryItem', METHOD=['DELETE'])
+@app.route('/deleteInventoryItem', methods=['DELETE'])
 def delete_inventory_item():
     return 'Item deleted'
 
