@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, session, request
 import re
+import jwt # For encoding and decoding tokens
 from datetime import timedelta
 
 app = Flask(__name__)
