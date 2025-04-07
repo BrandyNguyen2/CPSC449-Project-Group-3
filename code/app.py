@@ -38,7 +38,7 @@ def login():
     username = request.json['username']
     password = request.json['password']
 
-    if users.get(username) != password:
+    if username not in users or users[username]['password'] != password:
         return jsonify({'error': 'Invalid username or password'}), 401
     
     session['username'] = username
