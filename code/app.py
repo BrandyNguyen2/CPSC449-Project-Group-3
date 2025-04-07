@@ -77,15 +77,15 @@ def logout():
     response.set_cookie('username', '', expires=0)  # Clear the cookie
     return response, 200
 
-# @app.before_request
-# def require_login():
-#     allowed_routes = ['login', 'register']  # Routes that don't require authentication
-#     if request.endpoint not in allowed_routes and 'user' not in session:
-#         return jsonify({'error': 'Unauthorized access. Please log in to view this resource.'}), 401
+@app.before_request
+def require_login():
+    allowed_routes = ['login', 'register']  # Routes that don't require authentication
+    if request.endpoint not in allowed_routes and 'username' not in session:
+        return jsonify({'error': 'Unauthorized access. Please log in to view this resource.'}), 401
     
 # Inventory management (CRUD) 
 # USERS NEEDS TO BE AUTHORIZED TO ACCESS THESE FUNCTIONS
-@app.route('/createInventoryItem', methods=['POST'])
+@app.route('/inventory', methods=['POST'])
 def create_inventory_item():
     required_fields = ['name', 'description', 'quantity', 'price']
     if not request.json or not all(field in request.json for field in required_fields):
@@ -96,11 +96,11 @@ def create_inventory_item():
     inventory.append(inventory_item)
     return jsonify(inventory_item), 201
 
-@app.route('/readInventoryItem', methods=['GET'])
+@app.route('/inventory', methods=['GET'])
 def read_inventory_item():
     return jsonify(inventory)
 
-@app.route('/updateInventoryItem/<int:item_id>', methods=['PUT'])
+@app.route('/inventory/<int:item_id>', methods=['PUT'])
 def update_inventory_item(item_id):
     item = find_item(item_id)
     if item is None:
@@ -121,7 +121,7 @@ def update_inventory_item(item_id):
     item.update(request.json)
     return jsonify(item)
 
-@app.route('/deleteInventoryItem/<int:item_id>', methods=['DELETE'])
+@app.route('/inventory/<int:item_id>', methods=['DELETE'])
 def delete_inventory_item(item_id):
     item = find_item(item_id)
     if item is None:
@@ -129,8 +129,6 @@ def delete_inventory_item(item_id):
     
     inventory.remove(item)
     return jsonify({'message': 'Item deletion successful'}), 200
-
-# Cookies and session management
 
 if __name__ == '__main__':
     app.run(debug=True)
