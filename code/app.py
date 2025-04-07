@@ -60,6 +60,9 @@ def register():
     if username in users:
         return jsonify({'error': 'Username already exists'}), 400
     
+    if not is_valid_email(email):
+        return jsonify({'error': 'Invalid email format'}), 400
+    
     if len(password) < 8 or not re.search(r"[A-Z]", password) or not re.search(r"[0-9]", password):
         return jsonify({'error': 'Password must be at least 8 characters long and contain at least one uppercase letter and one number'}), 400
     
@@ -91,6 +94,15 @@ def create_inventory_item():
     if not request.json or not all(field in request.json for field in required_fields):
         return jsonify({'error': 'Invalid input'}), 400
     
+    if 'name' in request.json and not isinstance(request.json['name'], str):
+        return jsonify({'error': 'Name must be a string'}), 400
+    if 'description' in request.json and not isinstance(request.json['description'], str):
+        return jsonify({'error': 'Description must be a string'}), 400
+    if 'quantity' in request.json and not isinstance(request.json['quantity'], int) or request.json['quantity'] < 0:
+        return jsonify({'error': 'Quantity must be an integer and cannot be less than 0'}), 400
+    if 'price' in request.json and not isinstance(request.json['price'], float) or request.json['price'] < 0:
+        return jsonify({'error': 'Invalid price format'}), 400
+    
     inventory_id = max(item['id'] for item in inventory) + 1 if inventory else 1
     inventory_item = {**request.json, 'id': inventory_id}
     inventory.append(inventory_item)
@@ -113,9 +125,9 @@ def update_inventory_item(item_id):
         return jsonify({'error': 'Name must be a string'}), 400
     if 'description' in request.json and not isinstance(request.json['description'], str):
         return jsonify({'error': 'Description must be a string'}), 400
-    if 'quantity' in request.json and not isinstance(request.json['quantity'], int):
-        return jsonify({'error': 'Quantity must be a int'}), 400
-    if 'price' in request.json and not isinstance(request.json['price'], float):
+    if 'quantity' in request.json and not isinstance(request.json['quantity'], int) or request.json['quantity'] < 0:
+        return jsonify({'error': 'Quantity must be an integer and cannot be less than 0'}), 400
+    if 'price' in request.json and not isinstance(request.json['price'], float) or request.json['price'] < 0:
         return jsonify({'error': 'Invalid price format'}), 400
     
     item.update(request.json)
