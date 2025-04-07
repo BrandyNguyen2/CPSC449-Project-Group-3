@@ -17,11 +17,17 @@ inventory = [
     {"id" : 2, "name" : "Grape", "description" : "Fruit", "quantity" : 30, "price" : 2.99},
 ]
 
-users = {}
+users = { "test" : {
+    "password" : "B123456789",
+    "email" : "test@gmail.com"
+} }  # In-memory user database
 
 # Helper function to check if email is valid
 def is_valid_email(email):
     return re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email)
+
+def find_item(item_id):
+    return next((item for item in inventory if item["id"] == item_id), None)
 
 # User login
 @app.route('/login', methods=['POST'])
@@ -71,11 +77,11 @@ def logout():
     response.set_cookie('username', '', expires=0)  # Clear the cookie
     return response, 200
 
-@app.before_request
-def require_login():
-    allowed_routes = ['login', 'register']  # Routes that don't require authentication
-    if request.endpoint not in allowed_routes and 'user' not in session:
-        return jsonify({'error': 'Unauthorized access. Please log in to view this resource.'}), 401
+# @app.before_request
+# def require_login():
+#     allowed_routes = ['login', 'register']  # Routes that don't require authentication
+#     if request.endpoint not in allowed_routes and 'user' not in session:
+#         return jsonify({'error': 'Unauthorized access. Please log in to view this resource.'}), 401
     
 # Inventory management (CRUD) 
 # USERS NEEDS TO BE AUTHORIZED TO ACCESS THESE FUNCTIONS
@@ -94,13 +100,35 @@ def create_inventory_item():
 def read_inventory_item():
     return jsonify(inventory)
 
-@app.route('/updateInventoryItem', methods=['PUT'])
-def update_inventory_item():
-    return 'Item updated'
+@app.route('/updateInventoryItem/<int:item_id>', methods=['PUT'])
+def update_inventory_item(item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({'error': 'Item not found'}), 404
+    
+    if not request.json:
+        return jsonify({'error': 'Invalid input, request body must be JSON'}), 400
+    
+    if 'name' in request.json and not isinstance(request.json['name'], str):
+        return jsonify({'error': 'Name must be a string'}), 400
+    if 'description' in request.json and not isinstance(request.json['description'], str):
+        return jsonify({'error': 'Description must be a string'}), 400
+    if 'quantity' in request.json and not isinstance(request.json['quantity'], int):
+        return jsonify({'error': 'Quantity must be a int'}), 400
+    if 'price' in request.json and not isinstance(request.json['price'], float):
+        return jsonify({'error': 'Invalid price format'}), 400
+    
+    item.update(request.json)
+    return jsonify(item)
 
-@app.route('/deleteInventoryItem', methods=['DELETE'])
-def delete_inventory_item():
-    return 'Item deleted'
+@app.route('/deleteInventoryItem/<int:item_id>', methods=['DELETE'])
+def delete_inventory_item(item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({'error': 'Item not found'}), 404
+    
+    inventory.remove(item)
+    return jsonify({'message': 'Item deletion successful'}), 200
 
 # Cookies and session management
 
