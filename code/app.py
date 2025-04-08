@@ -33,7 +33,7 @@ def find_item(item_id):
 def token_required(f): 
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('access-token')
+        token = request.headers.get('x-access-token')
 
         if not token: 
             return jsonify({'message' : 'Token is missing.'}), 401 # unauthorized 
