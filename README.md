@@ -12,7 +12,7 @@
 2. ```.\venv\Scripts\activate```
 3. ```flask run```
 
-When JWT Token is generated upon logging in (in Postman):
-Go to the Headers tab
-Add a key called: x-access-token
-Paste your token as the value
+When JWT Token is generated upon logging in (in Postman):  
+1. Go to the Headers tab  
+2. Add a key called: x-access-token
+3. Paste your token as the value  
