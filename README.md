@@ -13,6 +13,6 @@
 3. ```flask run```
 
 When JWT Token is generated upon logging in (in Postman):  
-1. Go to the Headers tab  
-2. Add a key called: x-access-token
-3. Paste your token as the value  
+1. ```Go to the Headers tab```  
+2. ```Add a key called: x-access-token```  
+3. ```Paste your token as the value```  
