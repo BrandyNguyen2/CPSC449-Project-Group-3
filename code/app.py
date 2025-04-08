@@ -1,13 +1,14 @@
 from flask import Flask, jsonify, session, request
 import re
 import jwt # For encoding and decoding tokens
-from datetime import timedelta
+from functools import wraps
+import datetime
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret_key'
 app.config['SESSION_COOKIE_NAME'] = 'inventory_management_session'  # Name of session cookie
 app.config['SESSION_PERMANENT'] = False  # Session will not be permanent
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # Session expires after 30 minutes
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(minutes=30)  # Session expires after 30 minutes
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevents JavaScript access to session cookie
 app.config['SESSION_COOKIE_SECURE'] = False  # Should be True in production for HTTPS security
 
@@ -29,6 +30,28 @@ def is_valid_email(email):
 def find_item(item_id):
     return next((item for item in inventory if item["id"] == item_id), None)
 
+def token_required(f): 
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('access-token')
+
+        if not token: 
+            return jsonify({'message' : 'Token is missing.'}), 401 # unauthorized 
+        
+        try : # decode token using secret key
+            print("Received token:", token)
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            currentUser = data['username'] # Extract user info
+        except jwt.ExpiredSignatureError : 
+            return jsonify({'message' : 'Expired Token'}), 401 # unauthorized 
+        except jwt.InvalidTokenError as e : 
+            print("JWT decode error", e)
+            return jsonify({'message' : 'Invalid Token'}), 401 # unauthorized
+        
+        return f(currentUser, *args, **kwargs)
+
+    return decorated 
+
 # User login
 @app.route('/login', methods=['POST'])
 def login():
@@ -41,8 +64,15 @@ def login():
     if username not in users or users[username]['password'] != password:
         return jsonify({'error': 'Invalid username or password'}), 401
     
+    token = jwt.encode(
+        { 'username' : username, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30) },
+        app.config['SECRET_KEY'],
+        algorithm="HS256"
+    )
+    print("Encoded token type:", type(token))
+
     session['username'] = username
-    response = jsonify({'message': 'Login successful'})
+    response = jsonify({'message': 'Login successful', 'token' : token})
     response.set_cookie('username', username, httponly=True, max_age=1800)  # Cookie expires in 30 minutes
 
     return response, 200
@@ -89,7 +119,8 @@ def require_login():
 # Inventory management (CRUD) 
 # USERS NEEDS TO BE AUTHORIZED TO ACCESS THESE FUNCTIONS
 @app.route('/inventory', methods=['POST'])
-def create_inventory_item():
+@token_required
+def create_inventory_item(currentUser):
     required_fields = ['name', 'description', 'quantity', 'price']
     if not request.json or not all(field in request.json for field in required_fields):
         return jsonify({'error': 'Invalid input'}), 400
@@ -109,11 +140,13 @@ def create_inventory_item():
     return jsonify(inventory_item), 201
 
 @app.route('/inventory', methods=['GET'])
-def read_inventory_item():
+@token_required
+def read_inventory_item(currentUser):
     return jsonify(inventory)
 
 @app.route('/inventory/<int:item_id>', methods=['PUT'])
-def update_inventory_item(item_id):
+@token_required
+def update_inventory_item(currentUser, item_id):
     item = find_item(item_id)
     if item is None:
         return jsonify({'error': 'Item not found'}), 404
@@ -134,7 +167,8 @@ def update_inventory_item(item_id):
     return jsonify(item)
 
 @app.route('/inventory/<int:item_id>', methods=['DELETE'])
-def delete_inventory_item(item_id):
+@token_required
+def delete_inventory_item(currentUser, item_id):
     item = find_item(item_id)
     if item is None:
         return jsonify({'error': 'Item not found'}), 404
