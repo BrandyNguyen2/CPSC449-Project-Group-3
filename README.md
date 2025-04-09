@@ -3,6 +3,8 @@
 ### Group Members: Amanda Shohdy, Brandy Nguyen, Huy Nguyen, Michael Baldo, and Carlos Hernandez
 ---
 ## Requirements:
+- Latest Python verison
+- Postman
 - ```pip install flask```
 - ```pip install jwt```
 - ```pip install PyJWT```
