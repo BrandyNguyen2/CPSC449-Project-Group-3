@@ -39,13 +39,11 @@ def token_required(f):
             return jsonify({'message' : 'Token is missing.'}), 401 # unauthorized 
         
         try : # decode token using secret key
-            print("Received token:", token)
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             currentUser = data['username'] # Extract user info
         except jwt.ExpiredSignatureError : 
             return jsonify({'message' : 'Expired Token'}), 401 # unauthorized 
-        except jwt.InvalidTokenError as e : 
-            print("JWT decode error", e)
+        except jwt.InvalidTokenError : 
             return jsonify({'message' : 'Invalid Token'}), 401 # unauthorized
         
         return f(currentUser, *args, **kwargs)
@@ -69,7 +67,6 @@ def login():
         app.config['SECRET_KEY'],
         algorithm="HS256"
     )
-    print("Encoded token type:", type(token))
 
     session['username'] = username
     response = jsonify({'message': 'Login successful', 'token' : token})
