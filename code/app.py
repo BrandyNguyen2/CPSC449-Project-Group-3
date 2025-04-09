@@ -141,6 +141,14 @@ def create_inventory_item(currentUser):
 def read_inventory_item(currentUser):
     return jsonify(inventory)
 
+@app.route('/inventory/<int:item_id>', methods=['GET'])
+@token_required
+def read_specific_inventory_item(currentUser, item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({'error': 'Item not found'}), 404
+    return jsonify(item)
+
 @app.route('/inventory/<int:item_id>', methods=['PUT'])
 @token_required
 def update_inventory_item(currentUser, item_id):
