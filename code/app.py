@@ -12,16 +12,11 @@ app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(minutes=30)  # Ses
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevents JavaScript access to session cookie
 app.config['SESSION_COOKIE_SECURE'] = False  # Should be True in production for HTTPS security
 
-# In memory database 
-inventory = [
-    {"id" : 1, "name" : "Apple", "description" : "Fruit", "quantity" : 12, "price" : 1.50},
-    {"id" : 2, "name" : "Grape", "description" : "Fruit", "quantity" : 30, "price" : 2.99},
-]
+# In-memory database 
+inventory = []
 
-users = { "test" : {
-    "password" : "B123456789",
-    "email" : "test@gmail.com"
-} }  # In-memory user database
+# In-memory user database
+users = { }  
 
 # Helper function to check if email is valid
 def is_valid_email(email):
