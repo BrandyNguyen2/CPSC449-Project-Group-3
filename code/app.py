@@ -109,7 +109,7 @@ def require_login():
         return jsonify({'error': 'Unauthorized access. Please log in to view this resource.'}), 401
     
 # Inventory management (CRUD) 
-# USERS NEEDS TO BE AUTHORIZED TO ACCESS THESE FUNCTIONS
+# ADMINS NEEDS TO BE AUTHORIZED TO ACCESS CREATE, UPDATE, DELETE METHODS (regular users can read all of the inventory or certain items with item id) 
 @app.route('/inventory', methods=['POST'])
 @token_required
 def create_inventory_item(currentUser):
