@@ -1,4 +1,4 @@
-# CPSC449 Project (Group 3)
+# CPSC449 Project (Group 3) - (Grocery store?) inventory management
 ---
 ### Group Members: Amanda Shohdy, Brandy Nguyen, Huy Nguyen, Michael Baldo, and Carlos Hernandez
 ---
