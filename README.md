@@ -10,7 +10,7 @@
 - ```pip install PyJWT```
 ---
 ## How to Run for Flask app:
-1. ```cd code```
+1. ```cd flask_code```
 2. ```.\venv\Scripts\activate```
 3. ```flask run```
 
@@ -29,4 +29,7 @@ When JWT Token is generated upon logging in (in Postman):
 - ```pip install mysql connector```
 - ```pip install pydantic[email]```
 
-
+## How to run for FastAPI app:
+1. ```cd fast```
+2. ```.\venv\Scripts\Activate```
+3. ```uvicorn main:app --reload```
