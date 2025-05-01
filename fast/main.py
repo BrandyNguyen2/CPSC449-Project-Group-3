@@ -114,42 +114,42 @@ def login_user(user: UserCreate, db: Session = Depends(get_db)):
 # Admin can do all CRUD operations, but regular users can only read items
 @app.post("/inventory", response_model=ItemOut)  # Add new item
 def add_item(item: ItemCreate, db: Session = Depends(get_db)):
-    existing = db.query(Student).filter(Student.email == student.email).first()  # Check for email duplication
+    existing = db.query(Inventory).filter(Inventory.name == item.name).first()  # Check for name duplication
     if existing:
-        raise HTTPException(status_code=400, detail="Email already in use.")  # Error if duplicate
-    new_student = Student(**student.dict())  # Create new student from input data
-    db.add(new_student)  # Add to DB session
+        raise HTTPException(status_code=400, detail="Item already exists")  # Error if duplicate
+    new_item = Inventory(**item.dict())  # Create new item from input data
+    db.add(new_item)  # Add to DB session
     db.commit()  # Commit transaction
-    db.refresh(new_student)  # Get auto-generated fields
-    return new_student  # Return new student data
+    db.refresh(new_item)  # Get auto-generated fields
+    return new_item  # Return new student data
 
 @app.get("/inventory", response_model=list[ItemOut])  # Get all inventory items
 def get_inventory(db: Session = Depends(get_db)):
-    return db.query(Student).all()  # Return list of all students
+    return db.query(Inventory).all()  # Return list of all items from inventory
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)  # Get a item by ID
 def get_item(item_id: int, db: Session = Depends(get_db)):
-    student = db.query(Student).get(item_id)  # Fetch student by primary key
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")  # Error if not found
-    return student  # Return found student
-
-@app.put("/inventory/{item_id}", response_model=StudentOut)  # Update item by ID
-def update_item(item_id: int, updated: StudentCreate, db: Session = Depends(get_db)):
-    student = db.query(Student).get(item_id)  # Find student
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")  # Not found error
-    for key, value in updated.dict().items():
-        setattr(student, key, value)  # Update fields dynamically
-    db.commit()  # Commit updates
-    db.refresh(student)  # Refresh to get new values
-    return student  # Return updated student
-
-@app.delete("/inventory/{item_id}")  # Delete item by ID
-def delete_item(item_id: int, db: Session = Depends(get_db)):
-    student = db.query(Student).get(item_id)  # Fetch student
-    if not student:
+    item = db.query(Inventory).get(item_id)  # Fetch item by primary key
+    if not item:
         raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
-    db.delete(student)  # Delete record
+    return item  # Return found item
+
+@app.put("/inventory/{item_id}", response_model=ItemOut)  # Update item by ID
+def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db)):
+    item = db.query(Inventory).get(item_id)  # Find student
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")  # Not found error
+    for key, value in updated.dict().items():
+        setattr(item, key, value)  # Update fields dynamically
+    db.commit()  # Commit updates
+    db.refresh(item)  # Refresh to get new values
+    return item  # Return updated item
+
+@app.delete("/inventory/{item_id}")  # Delete item by item ID
+def delete_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Inventory).get(item_id)  # Fetch student
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
+    db.delete(item)  # Delete record
     db.commit()  # Save changes
     return {"message": "Item deleted successfully"}  # Return success message
