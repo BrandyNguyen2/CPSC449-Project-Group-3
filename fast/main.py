@@ -85,68 +85,71 @@ def validate_password(password: str):  # Function to validate password strength
     return None  # Password is valid
 
 # ------------------- API Endpoints -------------------
-
+# TODO: Need to figure out register for admin and normal user
+# TODO: Need to implement JWT tokens, Cookies, and sessions for login and logout
 @app.post("/register", response_model=UserOut)  # Register new user
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.username == user.username).first()  # Check for duplicate username
+    existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="Username already taken.")  # Throw error if username exists
+        raise HTTPException(status_code=400, detail="Username already taken.")
 
-    password_error = validate_password(user.password)  # Validate password
+    password_error = validate_password(user.password)
     if password_error:
-        raise HTTPException(status_code=400, detail=password_error)  # Return validation error
+        raise HTTPException(status_code=400, detail=password_error)
 
-    new_user = User(username=user.username, password=user.password)  # Create user object
-    db.add(new_user)  # Add to DB session
-    db.commit()  # Commit changes
-    db.refresh(new_user)  # Refresh instance to get DB-assigned ID
+    new_user = User(username=user.username, password=user.password)
+    db.add(new_user) 
+    db.commit()  
+    db.refresh(new_user)  
     return new_user  # Return the user info
 
-@app.post("/login")  # User login endpoint
+@app.post("/login")  
 def login_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()  # Get user from DB
+    db_user = db.query(User).filter(User.username == user.username).first()  
     if not db_user or db_user.password != user.password:  # Check credentials
-        raise HTTPException(status_code=401, detail="Invalid username or password.")  # Auth failed
-    return {"message": "Login successful."}  # Login passed
+        raise HTTPException(status_code=401, detail="Invalid username or password.") 
+    return {"message": "Login successful."}  
 
+# -------------------- Inventory Management -------------------
+# Admin can do all CRUD operations, but regular users can only read items
 @app.post("/inventory", response_model=ItemOut)  # Add new item
-def add_student(student: StudentCreate, db: Session = Depends(get_db)):
-    existing = db.query(Student).filter(Student.email == student.email).first()  # Check for email duplication
+def add_item(item: ItemCreate, db: Session = Depends(get_db)):
+    existing = db.query(Inventory).filter(Inventory.name == item.name).first()  # Check for name duplication
     if existing:
-        raise HTTPException(status_code=400, detail="Email already in use.")  # Error if duplicate
-    new_student = Student(**student.dict())  # Create new student from input data
-    db.add(new_student)  # Add to DB session
+        raise HTTPException(status_code=400, detail="Item already exists")  # Error if duplicate
+    new_item = Inventory(**item.dict())  # Create new item from input data
+    db.add(new_item)  # Add to DB session
     db.commit()  # Commit transaction
-    db.refresh(new_student)  # Get auto-generated fields
-    return new_student  # Return new student data
+    db.refresh(new_item)  # Get auto-generated fields
+    return new_item  # Return new student data
 
-@app.get("/inventory", response_model=list[StudentOut])  # Get all inventory items
-def get_all_students(db: Session = Depends(get_db)):
-    return db.query(Student).all()  # Return list of all students
+@app.get("/inventory", response_model=list[ItemOut])  # Get all inventory items
+def get_inventory(db: Session = Depends(get_db)):
+    return db.query(Inventory).all()  # Return list of all items from inventory
 
-@app.get("/inventory/{student_id}", response_model=StudentOut)  # Get a item by ID
-def get_student(student_id: int, db: Session = Depends(get_db)):
-    student = db.query(Student).get(student_id)  # Fetch student by primary key
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")  # Error if not found
-    return student  # Return found student
+@app.get("/inventory/{item_id}", response_model=ItemOut)  # Get a item by ID
+def get_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Inventory).get(item_id)  # Fetch item by primary key
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
+    return item  # Return found item
 
-@app.put("/inventory/{student_id}", response_model=StudentOut)  # Update item by ID
-def update_student(student_id: int, updated: StudentCreate, db: Session = Depends(get_db)):
-    student = db.query(Student).get(student_id)  # Find student
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")  # Not found error
+@app.put("/inventory/{item_id}", response_model=ItemOut)  # Update item by ID
+def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db)):
+    item = db.query(Inventory).get(item_id)  # Find student
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")  # Not found error
     for key, value in updated.dict().items():
-        setattr(student, key, value)  # Update fields dynamically
+        setattr(item, key, value)  # Update fields dynamically
     db.commit()  # Commit updates
-    db.refresh(student)  # Refresh to get new values
-    return student  # Return updated student
+    db.refresh(item)  # Refresh to get new values
+    return item  # Return updated item
 
-@app.delete("/inventory/{student_id}")  # Delete item by ID
-def delete_student(student_id: int, db: Session = Depends(get_db)):
-    student = db.query(Student).get(student_id)  # Fetch student
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")  # Error if not found
-    db.delete(student)  # Delete record
+@app.delete("/inventory/{item_id}")  # Delete item by item ID
+def delete_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Inventory).get(item_id)  # Fetch student
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
+    db.delete(item)  # Delete record
     db.commit()  # Save changes
-    return {"message": "Student deleted successfully"}  # Return success message
+    return {"message": "Item deleted successfully"}  # Return success message
