@@ -1,21 +1,19 @@
-from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request  # Import FastAPI core components
-from pydantic import BaseModel, EmailStr, Field       # Import Pydantic for data validation
-from sqlalchemy import create_engine, Column, Integer, String, Float  # Import SQLAlchemy ORM components
-from sqlalchemy.ext.declarative import declarative_base        # Import base class for models
-from sqlalchemy.orm import sessionmaker, Session              # Import session handling for database
-import re  # Import regular expressions for password validation
-import jwt # For encoding and decoding tokens
-from datetime import datetime, timedelta  # Import date and time handling
+from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+import re
+import jwt
+from datetime import datetime, timedelta
 
-app = FastAPI()  
+app = FastAPI()
 
-DATABASE_URL = ""  # MySQL database URL
+DATABASE_URL = ""  # Fill in your MySQL database URL here
 
-engine = create_engine(DATABASE_URL)  # Create a SQLAlchemy engine to connect with MySQL
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)  # Create a session factory
-
-Base = declarative_base()  # Base class for all SQLAlchemy models
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 SECRET_KEY = "secret_key"
 ALGORITHM = "HS256"
@@ -27,23 +25,20 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# Dependency function to get a DB session
 def get_db():
-    db = SessionLocal()  # Create a new DB session
+    db = SessionLocal()
     try:
-        yield db  # Yield session for dependency injection
+        yield db
     finally:
-        db.close()  # Close session after use
+        db.close()
 
-# Get user from JWT token
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")                             # Get token from user's cookies
+    token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])     # Decode token for payload
-        username = payload.get("sub")                                       # Extract username
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
         if not username:
             raise HTTPException(status_code=401, detail="Invalid token")
     except jwt.ExpiredSignatureError:
@@ -51,59 +46,60 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = db.query(User).filter(User.username == username).first()         # Query user from database using username
+    user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-class Inventory(Base):  # Define Inventory model/table
-    __tablename__ = "inventory"  # Set table name in the database
+def admin_required(current_user: 'User' = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
-    id = Column(Integer, primary_key=True, index=True)  # Primary key with index
-    name = Column(String(50), nullable=False, unique=True)  # Grocery item's name (required + unique)
-    description = Column(String(100), nullable=False)  # Description (required)
-    price = Column(Float, nullable=False)  # Price (required)
-    quantity = Column(Integer, nullable=False)  # Quantity (required)
+class Inventory(Base):
+    __tablename__ = "inventory"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), nullable=False, unique=True)
+    description = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
 
-class User(Base):  # Define User model/table
-    __tablename__ = "users"  # Set table name in the database
-
-    id = Column(Integer, primary_key=True, index=True)  # User ID (primary key)
-    username = Column(String(50), unique=True, nullable=False)  # Username (unique)
-    password = Column(String(255), nullable=False)  # Password (stored in plain text here)
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    role = Column(String(20), default="user")
 
 Base.metadata.create_all(bind=engine)
 
-# ------------------- Pydantic Schemas -------------------
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
 
-class UserCreate(BaseModel):  # Schema for creating/logging in a user
-    username: str  # Required string field
-    password: str  # Required string field
-
-class UserOut(BaseModel):  # Schema for sending user info in responses
-    id: int  # User ID
-    username: str  # Username
-
+class UserOut(BaseModel):
+    id: int
+    username: str
     class Config:
-        orm_mode = True  # Enables compatibility with ORM objects
+        orm_mode = True
 
-class ItemCreate(BaseModel):  # Schema for creating an item
+class ItemCreate(BaseModel):
     name: str
     description: str
     price: float
     quantity: int
 
-class ItemOut(BaseModel):  # Schema for returning item data
-    id: int 
+class ItemOut(BaseModel):
+    id: int
     name: str
     description: str
     price: float
     quantity: int
-
     class Config:
-        orm_mode = True  # Convert ORM objects to JSON
+        orm_mode = True
 
-def validate_password(password: str):  # Function to validate password strength
+def validate_password(password: str):
     if len(password) < 8:
         return "Password must be at least 8 characters long."
     if not re.search(r'\d', password):
@@ -114,86 +110,74 @@ def validate_password(password: str):  # Function to validate password strength
         return "Password must contain at least one lowercase letter."
     if not re.search(r'[\W_]', password):
         return "Password must contain at least one special character."
-    return None  # Password is valid
+    return None
 
-# ------------------- API Endpoints -------------------
-# TODO: Need to figure out register for admin and normal user
-# TODO: Need to implement JWT tokens, Cookies, and sessions for login and logout
-@app.post("/register", response_model=UserOut)  # Register new user
+@app.post("/register", response_model=UserOut)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already taken.")
-
     password_error = validate_password(user.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
+    new_user = User(username=user.username, password=user.password, role=user.role)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
 
-    new_user = User(username=user.username, password=user.password)
-    db.add(new_user) 
-    db.commit()  
-    db.refresh(new_user)  
-    return new_user  # Return the user info
-
-@app.post("/login")  
+@app.post("/login")
 def login_user(user: UserCreate, response: Response, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()  
-    if not db_user or db_user.password != user.password:  # Check credentials
-        raise HTTPException(status_code=401, detail="Invalid username or password.") 
-    
+    db_user = db.query(User).filter(User.username == user.username).first()
+    if not db_user or db_user.password != user.password:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
     token = create_access_token(data={"sub": db_user.username})
-    
-    # Set cookie with token
     response.set_cookie(key="access_token", value=token, httponly=True, secure=False, samesite="lax")
-    return {"message": "Login successful."}  
-
+    return {"message": "Login successful."}
 
 @app.post("/logout")
 def logout(response: Response):
     response.delete_cookie("access_token")
     return {"message": "Logged out successfully"}
 
-
-# -------------------- Inventory Management -------------------
-# Admin can do all CRUD operations, but regular users can only read items
-@app.post("/inventory", response_model=ItemOut)  # Add new item
-def add_item(item: ItemCreate, db: Session = Depends(get_db)):
-    existing = db.query(Inventory).filter(Inventory.name == item.name).first()  # Check for name duplication
+@app.post("/inventory", response_model=ItemOut)
+def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
+    existing = db.query(Inventory).filter(Inventory.name == item.name).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Item already exists")  # Error if duplicate
-    new_item = Inventory(**item.dict())  # Create new item from input data
-    db.add(new_item)  # Add to DB session
-    db.commit()  # Commit transaction
-    db.refresh(new_item)  # Get auto-generated fields
-    return new_item  # Return new student data
+        raise HTTPException(status_code=400, detail="Item already exists")
+    new_item = Inventory(**item.dict())
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
 
-@app.get("/inventory", response_model=list[ItemOut])  # Get all inventory items
+@app.get("/inventory", response_model=list[ItemOut])
 def get_inventory(db: Session = Depends(get_db)):
-    return db.query(Inventory).all()  # Return list of all items from inventory
+    return db.query(Inventory).all()
 
-@app.get("/inventory/{item_id}", response_model=ItemOut)  # Get a item by ID
+@app.get("/inventory/{item_id}", response_model=ItemOut)
 def get_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.query(Inventory).get(item_id)  # Fetch item by primary key
+    item = db.query(Inventory).get(item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
-    return item  # Return found item
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
 
-@app.put("/inventory/{item_id}", response_model=ItemOut)  # Update item by ID
-def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db)):
-    item = db.query(Inventory).get(item_id)  # Find item
+@app.put("/inventory/{item_id}", response_model=ItemOut)
+def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
+    item = db.query(Inventory).get(item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")  # Not found error
+        raise HTTPException(status_code=404, detail="Item not found")
     for key, value in updated.dict().items():
-        setattr(item, key, value)  # Update fields dynamically
-    db.commit()  # Commit updates
-    db.refresh(item)  # Refresh to get new values
-    return item  # Return updated item
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
 
-@app.delete("/inventory/{item_id}")  # Delete item by item ID
-def delete_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.query(Inventory).get(item_id)  # Fetch student
+@app.delete("/inventory/{item_id}")
+def delete_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
+    item = db.query(Inventory).get(item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")  # Error if not found
-    db.delete(item)  # Delete record
-    db.commit()  # Save changes
-    return {"message": "Item deleted successfully"}  # Return success message
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(item)
+    db.commit()
+    return {"message": "Item deleted successfully"}
