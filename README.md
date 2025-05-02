@@ -22,14 +22,10 @@ When JWT Token is generated upon logging in (in Postman):
 ---
 ### Requirements for FastAPI app:
 - Latest Python version
-- ```pip install fastapi```
-- ```pip install uvicorn```
-- ```pip install pydantic```
-- ```pip install sqlalchemy```
-- ```pip install mysql connector```
-- ```pip install pydantic[email]```
+- Install requirements.txt dependencies
 
 ## How to run for FastAPI app:
 1. ```cd fast```
 2. ```.\venv\Scripts\Activate```
-3. ```uvicorn main:app --reload```
+3. ```pip install -r requirements.txt```
+4. ```uvicorn main:app --reload```

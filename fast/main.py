@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends  # Import FastAPI core components
+from fastapi import FastAPI, HTTPException, Depends, Response, Cookie  # Import FastAPI core components
 from pydantic import BaseModel, EmailStr, Field       # Import Pydantic for data validation
 from sqlalchemy import create_engine, Column, Integer, String, Float  # Import SQLAlchemy ORM components
 from sqlalchemy.ext.declarative import declarative_base        # Import base class for models
 from sqlalchemy.orm import sessionmaker, Session              # Import session handling for database
 import re  # Import regular expressions for password validation
-
+import jwt # For encoding and decoding tokens
+from datetime import datetime, timedelta  # Import date and time handling
 
 app = FastAPI()  
 
@@ -15,6 +16,16 @@ engine = create_engine(DATABASE_URL)  # Create a SQLAlchemy engine to connect wi
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)  # Create a session factory
 
 Base = declarative_base()  # Base class for all SQLAlchemy models
+
+SECRET_KEY = "secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Dependency function to get a DB session
 def get_db():
@@ -31,7 +42,7 @@ class Inventory(Base):  # Define Inventory model/table
     name = Column(String(50), nullable=False, unique=True)  # Grocery item's name (required + unique)
     description = Column(String(100), nullable=False)  # Description (required)
     price = Column(Float, nullable=False)  # Price (required)
-    quantity = Column(String(1000), nullable=False)  # Quantity (required)
+    quantity = Column(Integer, nullable=False)  # Quantity (required)
 
 class User(Base):  # Define User model/table
     __tablename__ = "users"  # Set table name in the database
@@ -55,13 +66,13 @@ class UserOut(BaseModel):  # Schema for sending user info in responses
     class Config:
         orm_mode = True  # Enables compatibility with ORM objects
 
-class ItemCreate(BaseModel):  # Schema for creating a student
+class ItemCreate(BaseModel):  # Schema for creating an item
     name: str
     description: str
     price: float
     quantity: int
 
-class ItemOut(BaseModel):  # Schema for returning student data
+class ItemOut(BaseModel):  # Schema for returning item data
     id: int 
     name: str
     description: str
@@ -104,11 +115,23 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return new_user  # Return the user info
 
 @app.post("/login")  
-def login_user(user: UserCreate, db: Session = Depends(get_db)):
+def login_user(user: UserCreate, response: Response, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()  
     if not db_user or db_user.password != user.password:  # Check credentials
         raise HTTPException(status_code=401, detail="Invalid username or password.") 
+    
+    token = create_access_token(data={"sub": db_user.username})
+    
+    # Set cookie with token
+    response.set_cookie(key="access_token", value=token, httponly=True, secure=False, samesite="lax")
     return {"message": "Login successful."}  
+
+
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token")
+    return {"message": "Logged out successfully"}
+
 
 # -------------------- Inventory Management -------------------
 # Admin can do all CRUD operations, but regular users can only read items
@@ -136,7 +159,7 @@ def get_item(item_id: int, db: Session = Depends(get_db)):
 
 @app.put("/inventory/{item_id}", response_model=ItemOut)  # Update item by ID
 def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db)):
-    item = db.query(Inventory).get(item_id)  # Find student
+    item = db.query(Inventory).get(item_id)  # Find item
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")  # Not found error
     for key, value in updated.dict().items():
