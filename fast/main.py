@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Response, Cookie  # Import FastAPI core components
+from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request  # Import FastAPI core components
 from pydantic import BaseModel, EmailStr, Field       # Import Pydantic for data validation
 from sqlalchemy import create_engine, Column, Integer, String, Float  # Import SQLAlchemy ORM components
 from sqlalchemy.ext.declarative import declarative_base        # Import base class for models
@@ -34,6 +34,27 @@ def get_db():
         yield db  # Yield session for dependency injection
     finally:
         db.close()  # Close session after use
+
+# Get user from JWT token
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get("access_token")                             # Get token from user's cookies
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])     # Decode token for payload
+        username = payload.get("sub")                                       # Extract username
+        if not username:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.username == username).first()         # Query user from database using username
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 class Inventory(Base):  # Define Inventory model/table
     __tablename__ = "inventory"  # Set table name in the database
