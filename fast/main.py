@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 import re
-import jwt
+from jose import JWTError, jwt
 import os
 from datetime import datetime, timedelta
 
@@ -42,10 +42,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         username = payload.get("sub")
         if not username:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid Token or Expired Token")
 
     user = db.query(User).filter(User.username == username).first()
     if not user:
@@ -68,13 +66,19 @@ class Inventory(Base):
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), unique=True, nullable=False)
     username = Column(String(50), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
     role = Column(String(20), default="user")
 
 Base.metadata.create_all(bind=engine)
 
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 class UserCreate(BaseModel):
+    email : EmailStr
     username: str
     password: str
     role: str = "user"
@@ -82,6 +86,7 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+
     class Config:
         orm_mode = True
 
@@ -97,6 +102,7 @@ class ItemOut(BaseModel):
     description: str
     price: float
     quantity: int
+
     class Config:
         orm_mode = True
 
@@ -118,17 +124,20 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already taken.")
+    exisiting_email = db.query(User).filter(User.email == user.email).first()
+    if exisiting_email:
+        raise HTTPException(status_code=400, detail="Email already taken.")
     password_error = validate_password(user.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
-    new_user = User(username=user.username, password=user.password, role=user.role)
+    new_user = User(email=user.email, username=user.username, password=user.password, role=user.role)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return new_user
 
 @app.post("/login")
-def login_user(user: UserCreate, response: Response, db: Session = Depends(get_db)):
+def login_user(user: UserLogin, response: Response, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
     if not db_user or db_user.password != user.password:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
