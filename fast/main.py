@@ -153,11 +153,11 @@ def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User
     return new_item
 
 @app.get("/inventory", response_model=list[ItemOut])
-def get_inventory(db: Session = Depends(get_db)):
+def get_inventory(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Inventory).all()
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)
-def get_item(item_id: int, db: Session = Depends(get_db)):
+def get_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(Inventory).get(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
