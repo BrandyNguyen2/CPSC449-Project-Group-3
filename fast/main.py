@@ -58,10 +58,11 @@ def admin_required(current_user: 'User' = Depends(get_current_user)):
 class Inventory(Base):
     __tablename__ = "inventory"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), nullable=False, unique=True)
+    name = Column(String(50), nullable=False) 
     description = Column(String(100), nullable=False)
     price = Column(Float, nullable=False)
     quantity = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
 
 class User(Base):
     __tablename__ = "users"
@@ -151,11 +152,8 @@ def logout(response: Response):
     return {"message": "Logged out successfully"}
 
 @app.post("/inventory", response_model=ItemOut)
-def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    existing = db.query(Inventory).filter(Inventory.name == item.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Item already exists")
-    new_item = Inventory(**item.dict())
+def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    new_item = Inventory(**item.dict(), user_id=current_user.id)
     db.add(new_item)
     db.commit()
     db.refresh(new_item)
@@ -163,18 +161,24 @@ def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User
 
 @app.get("/inventory", response_model=list[ItemOut])
 def get_inventory(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Inventory).all()
+    return db.query(Inventory).filter(Inventory.user_id == current_user.id).all()
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)
 def get_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Inventory).get(item_id)
+    item = db.query(Inventory).filter(
+        Inventory.id == item_id,
+        Inventory.user_id == current_user.id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item
 
 @app.put("/inventory/{item_id}", response_model=ItemOut)
-def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    item = db.query(Inventory).get(item_id)
+def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    item = db.query(Inventory).filter(
+        Inventory.id == item_id,
+        Inventory.user_id == current_user.id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     for key, value in updated.dict().items():
@@ -184,8 +188,11 @@ def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db)
     return item
 
 @app.delete("/inventory/{item_id}")
-def delete_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    item = db.query(Inventory).get(item_id)
+def delete_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    item = db.query(Inventory).filter(
+        Inventory.id == item_id,
+        Inventory.user_id == current_user.id
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     db.delete(item)
