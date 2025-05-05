@@ -73,6 +73,7 @@ class ItemOut(BaseModel):
     description: str
     price: float
     quantity: int
+    user_id: str
 
 def validate_password(password: str):
     if len(password) < 8:
@@ -119,31 +120,39 @@ def logout(response: Response):
 
 @app.post("/inventory", response_model=ItemOut)
 def add_item(item: ItemCreate, current_user: dict = Depends(admin_required)):
-    if db.inventory.find_one({"name": item.name}):
-        raise HTTPException(status_code=400, detail="Item already exists.")
+    item_dict = item.dict()
+    item_dict["user_id"] = str(current_user["_id"])
     
-    result = db.inventory.insert_one(item.dict())
+    if db.inventory.find_one({"name": item_dict["name"], "user_id": item_dict["user_id"]}):
+        raise HTTPException(status_code=400, detail="Item already exists for this user.")
+    
+    result = db.inventory.insert_one(item_dict)
     new_item = db.inventory.find_one({"_id": result.inserted_id})
     return {
         "id": str(new_item["_id"]),
         "name": new_item["name"],
         "description": new_item["description"],
         "price": new_item["price"],
-        "quantity": new_item["quantity"]
+        "quantity": new_item["quantity"],
+        "user_id": new_item["user_id"]
     }
 
 @app.get("/inventory", response_model=list[ItemOut])
 def get_inventory(current_user: dict = Depends(get_current_user)):
     items = []
-    for item in db.inventory.find(): 
+    # If admin, can see all items. If regular user, can only see their items
+    query = {} if current_user.get("role") == "admin" else {"user_id": str(current_user["_id"])}
+    
+    for item in db.inventory.find(query): 
         items.append({
             "id": str(item["_id"]), 
             "name": item["name"],
             "description": item["description"], 
             "price": item["price"], 
-            "quantity": item["quantity"]
+            "quantity": item["quantity"],
+            "user_id": item.get("user_id", str(current_user["_id"]))  # Default to current user if no user_id
         })
-    return items 
+    return items
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)
 def get_item(item_id: int, current_user: dict = Depends(get_current_user)):
@@ -152,15 +161,20 @@ def get_item(item_id: int, current_user: dict = Depends(get_current_user)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid item ID")
 
-    item = db.inventory.find_one({"_id": oid})
+    query = {"_id": oid}
+    if current_user.get("role") != "admin":
+        query["user_id"] = str(current_user["_id"])
+
+    item = db.inventory.find_one(query)
     if not item: 
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Item not found.")
     return {
         "id": str(item["_id"]),
         "name": item["name"],
         "description": item["description"],
         "price": item["price"],
-        "quantity": item["quantity"]
+        "quantity": item["quantity"],
+        # "user_id": item["user_id"]
     }
 
 @app.put("/inventory/{item_id}", response_model=ItemOut)
@@ -172,16 +186,19 @@ def update_item(item_id: int, updated: ItemCreate, current_user: dict = Depends(
 
     item = db.inventory.find_one({"_id": oid})
     if not item: 
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Item not found.")
     
-    db.inventory.update_one({"_id": oid}, {"$set": updated.dict()})
+    update_data = updated.dict()
+    update_data["user_id"] = str(current_user["_id"])
+    db.inventory.update_one({"_id": oid}, {"$set": update_data})
     updated_item = db.inventory.find_one({"_id": oid})
     return {
         "id": str(updated_item["_id"]),
         "name": updated_item["name"],
         "description": updated_item["description"],
         "price": updated_item["price"],
-        "quantity": updated_item["quantity"]
+        "quantity": updated_item["quantity"],
+        # "user_id": updated_item["user_id"]
     }
 
 @app.delete("/inventory/{item_id}")
