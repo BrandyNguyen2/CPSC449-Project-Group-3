@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from dotenv import load_dotenv
 from jose import JWTError, jwt
-from bson import ObjectId
 from pymongo import MongoClient
 import re
 import os
@@ -67,8 +66,21 @@ class ItemCreate(BaseModel):
     price: float
     quantity: int
 
+    # Using validation method from pydantic to check if price and quantity are valid
+    @validator('price')
+    def validate_price(cls, price): # cls is the class itself
+        if price <= 0:
+            raise ValueError("Price must be greater than 0")
+        return price
+
+    @validator('quantity')
+    def validate_quantity(cls, quantity):
+        if quantity < 0:
+            raise ValueError("Quantity cannot be less than 0")
+        return quantity
+
 class ItemOut(BaseModel):
-    id: str
+    id: int
     name: str
     description: str
     price: float
@@ -87,6 +99,19 @@ def validate_password(password: str):
     if not re.search(r'[\W_]', password):
         return "Password must contain at least one special character."
     return None
+
+# This function is used to get the next item ID from the counter collection
+def get_next_item_id():
+    # looks for a document with _id "itemid" in the counters collection and increments its sequence field by 1
+    # if it doesn't exist, it creates one with seq = 1
+    counter = db.counters.find_one_and_update(
+        {"_id": "itemid"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True
+    )
+    
+    return counter["seq"] # returns the new sequence value
 
 @app.post("/register", response_model=UserOut)
 def register_user(user: UserCreate):
@@ -122,46 +147,40 @@ def logout(response: Response):
 def add_item(item: ItemCreate, current_user: dict = Depends(admin_required)):
     item_dict = item.dict()
     item_dict["user_id"] = str(current_user["_id"])
-    
+    item_dict["id"] = get_next_item_id()
+
     if db.inventory.find_one({"name": item_dict["name"], "user_id": item_dict["user_id"]}):
         raise HTTPException(status_code=400, detail="Item already exists for this user.")
     
-    result = db.inventory.insert_one(item_dict)
-    new_item = db.inventory.find_one({"_id": result.inserted_id})
+    db.inventory.insert_one(item_dict)
     return {
-        "id": str(new_item["_id"]),
-        "name": new_item["name"],
-        "description": new_item["description"],
-        "price": new_item["price"],
-        "quantity": new_item["quantity"],
-        "user_id": new_item["user_id"]
+        "id": item_dict["id"],
+        "name": item_dict["name"],
+        "description": item_dict["description"],
+        "price": item_dict["price"],
+        "quantity": item_dict["quantity"],
+        "user_id": item_dict["user_id"]
     }
 
 @app.get("/inventory", response_model=list[ItemOut])
 def get_inventory(current_user: dict = Depends(get_current_user)):
     items = []
-    # If admin, can see all items. If regular user, can only see their items
     query = {} if current_user.get("role") == "admin" else {"user_id": str(current_user["_id"])}
     
     for item in db.inventory.find(query): 
         items.append({
-            "id": str(item["_id"]), 
+            "id": item["id"], 
             "name": item["name"],
             "description": item["description"], 
             "price": item["price"], 
             "quantity": item["quantity"],
-            "user_id": item.get("user_id", str(current_user["_id"]))  # Default to current user if no user_id
+            "user_id": item.get("user_id", str(current_user["_id"]))
         })
     return items
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)
 def get_item(item_id: int, current_user: dict = Depends(get_current_user)):
-    try:
-        oid = ObjectId(item_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid item ID")
-
-    query = {"_id": oid}
+    query = {"id": item_id}
     if current_user.get("role") != "admin":
         query["user_id"] = str(current_user["_id"])
 
@@ -169,46 +188,37 @@ def get_item(item_id: int, current_user: dict = Depends(get_current_user)):
     if not item: 
         raise HTTPException(status_code=404, detail="Item not found.")
     return {
-        "id": str(item["_id"]),
+        "id": item["id"],
         "name": item["name"],
         "description": item["description"],
         "price": item["price"],
         "quantity": item["quantity"],
-        # "user_id": item["user_id"]
+        "user_id": item["user_id"]
     }
 
 @app.put("/inventory/{item_id}", response_model=ItemOut)
 def update_item(item_id: int, updated: ItemCreate, current_user: dict = Depends(admin_required)):
-    try:
-        oid = ObjectId(item_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid item ID")
-
-    item = db.inventory.find_one({"_id": oid})
+    query = {"id": item_id}
+    item = db.inventory.find_one(query)
     if not item: 
         raise HTTPException(status_code=404, detail="Item not found.")
     
     update_data = updated.dict()
     update_data["user_id"] = str(current_user["_id"])
-    db.inventory.update_one({"_id": oid}, {"$set": update_data})
-    updated_item = db.inventory.find_one({"_id": oid})
+    db.inventory.update_one(query, {"$set": update_data})
+    updated_item = db.inventory.find_one(query)
     return {
-        "id": str(updated_item["_id"]),
+        "id": updated_item["id"],
         "name": updated_item["name"],
         "description": updated_item["description"],
         "price": updated_item["price"],
         "quantity": updated_item["quantity"],
-        # "user_id": updated_item["user_id"]
+        "user_id": updated_item["user_id"]
     }
 
 @app.delete("/inventory/{item_id}")
 def delete_item(item_id: int, current_user: dict = Depends(admin_required)):
-    try: 
-        oid = ObjectId(item_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid item ID")
-    
-    result = db.inventory.delete_one({"_id": oid})
+    result = db.inventory.delete_one({"id": item_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Item not found.")
     return {"message": "Item deleted successfully"}

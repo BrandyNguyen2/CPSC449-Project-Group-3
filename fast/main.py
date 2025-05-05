@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -97,6 +97,19 @@ class ItemCreate(BaseModel):
     price: float
     quantity: int
 
+    # Using validation method from pydantic to check if price and quantity are valid
+    @validator('price')
+    def validate_price(cls, price): # cls is the class itself
+        if price <= 0:
+            raise ValueError("Price must be greater than 0")
+        return price
+
+    @validator('quantity')
+    def validate_quantity(cls, quantity):
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than 0")
+        return quantity
+
 class ItemOut(BaseModel):
     id: int
     name: str
@@ -153,6 +166,9 @@ def logout(response: Response):
 
 @app.post("/inventory", response_model=ItemOut)
 def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    existing_item = db.query(Inventory).filter(Inventory.name == item.name).first()
+    if existing_item:
+        raise HTTPException(status_code=400, detail="Item name already taken.")
     new_item = Inventory(**item.dict(), user_id=current_user.id)
     db.add(new_item)
     db.commit()
