@@ -1,24 +1,23 @@
 from fastapi import FastAPI, HTTPException, Depends, Response, Cookie, Request
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
-import re
 from jose import JWTError, jwt
+from bson import ObjectId
+from pymongo import MongoClient
+import re
 import os
 from datetime import datetime, timedelta
 
 app = FastAPI()
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-SECRET_KEY = os.getenv("SECRET_KEY")
+MONGO_URL = os.getenv("MONGO_URL")
+SECRET_KEY = os.getenv("SECRET_KEY", "secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+client = MongoClient(MONGO_URL)
+db = client["inventory_db"]
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -26,14 +25,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def get_current_user(request: Request, db: Session = Depends(get_db)):
+def get_current_user(request: Request):
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -45,33 +37,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid Token or Expired Token")
 
-    user = db.query(User).filter(User.username == username).first()
+    user = db.users.find_one({"username": username})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-def admin_required(current_user: 'User' = Depends(get_current_user)):
-    if current_user.role != "admin":
+def admin_required(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
-
-class Inventory(Base):
-    __tablename__ = "inventory"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), nullable=False, unique=True)
-    description = Column(String(100), nullable=False)
-    price = Column(Float, nullable=False)
-    quantity = Column(Integer, nullable=False)
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(100), unique=True, nullable=False)
-    username = Column(String(50), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), default="user")
-
-Base.metadata.create_all(bind=engine)
 
 class UserLogin(BaseModel):
     username: str
@@ -84,11 +58,8 @@ class UserCreate(BaseModel):
     role: str = "user"
 
 class UserOut(BaseModel):
-    id: int
+    id: str
     username: str
-
-    class Config:
-        orm_mode = True
 
 class ItemCreate(BaseModel):
     name: str
@@ -97,14 +68,11 @@ class ItemCreate(BaseModel):
     quantity: int
 
 class ItemOut(BaseModel):
-    id: int
+    id: str
     name: str
     description: str
     price: float
     quantity: int
-
-    class Config:
-        orm_mode = True
 
 def validate_password(password: str):
     if len(password) < 8:
@@ -120,30 +88,29 @@ def validate_password(password: str):
     return None
 
 @app.post("/register", response_model=UserOut)
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.username == user.username).first()
-    if existing_user:
+def register_user(user: UserCreate):
+    if db.users.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Username already taken.")
-    exisiting_email = db.query(User).filter(User.email == user.email).first()
-    if exisiting_email:
+    if db.users.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already taken.")
     password_error = validate_password(user.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
-    new_user = User(email=user.email, username=user.username, password=user.password, role=user.role)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+    
+    new_user = user.dict()
+    db.users.insert_one(new_user)
+    created_user = db.users.find_one({"username": user.username})
+    return {"id": str(created_user["_id"]), "username": created_user["username"]}
 
 @app.post("/login")
-def login_user(user: UserLogin, response: Response, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if not db_user or db_user.password != user.password:
+def login_user(user: UserLogin, response: Response):
+    db_user = db.users.find_one({"username": user.username})
+    if not db_user or db_user["password"] != user.password:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
-    token = create_access_token(data={"sub": db_user.username})
-    response.set_cookie(key="access_token", value=token, httponly=True, secure=False, samesite="lax")
-    return {"message": "Login successful."}
+    
+    token = create_access_token(data={"sub": user.username})
+    response.set_cookie(key="access_token", value=token, httponly=True, secure=False, samesite='lax')
+    return {"message": "Login Successful."}
 
 @app.post("/logout")
 def logout(response: Response):
@@ -151,43 +118,80 @@ def logout(response: Response):
     return {"message": "Logged out successfully"}
 
 @app.post("/inventory", response_model=ItemOut)
-def add_item(item: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    existing = db.query(Inventory).filter(Inventory.name == item.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Item already exists")
-    new_item = Inventory(**item.dict())
-    db.add(new_item)
-    db.commit()
-    db.refresh(new_item)
-    return new_item
+def add_item(item: ItemCreate, current_user: dict = Depends(admin_required)):
+    if db.inventory.find_one({"name": item.name}):
+        raise HTTPException(status_code=400, detail="Item already exists.")
+    
+    result = db.inventory.insert_one(item.dict())
+    new_item = db.inventory.find_one({"_id": result.inserted_id})
+    return {
+        "id": str(new_item["_id"]),
+        "name": new_item["name"],
+        "description": new_item["description"],
+        "price": new_item["price"],
+        "quantity": new_item["quantity"]
+    }
 
 @app.get("/inventory", response_model=list[ItemOut])
-def get_inventory(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Inventory).all()
+def get_inventory(current_user: dict = Depends(get_current_user)):
+    items = []
+    for item in db.inventory.find(): 
+        items.append({
+            "id": str(item["_id"]), 
+            "name": item["name"],
+            "description": item["description"], 
+            "price": item["price"], 
+            "quantity": item["quantity"]
+        })
+    return items 
 
 @app.get("/inventory/{item_id}", response_model=ItemOut)
-def get_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(Inventory).get(item_id)
-    if not item:
+def get_item(item_id: int, current_user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(item_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid item ID")
+
+    item = db.inventory.find_one({"_id": oid})
+    if not item: 
         raise HTTPException(status_code=404, detail="Item not found")
-    return item
+    return {
+        "id": str(item["_id"]),
+        "name": item["name"],
+        "description": item["description"],
+        "price": item["price"],
+        "quantity": item["quantity"]
+    }
 
 @app.put("/inventory/{item_id}", response_model=ItemOut)
-def update_item(item_id: int, updated: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    item = db.query(Inventory).get(item_id)
-    if not item:
+def update_item(item_id: int, updated: ItemCreate, current_user: dict = Depends(admin_required)):
+    try:
+        oid = ObjectId(item_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid item ID")
+
+    item = db.inventory.find_one({"_id": oid})
+    if not item: 
         raise HTTPException(status_code=404, detail="Item not found")
-    for key, value in updated.dict().items():
-        setattr(item, key, value)
-    db.commit()
-    db.refresh(item)
-    return item
+    
+    db.inventory.update_one({"_id": oid}, {"$set": updated.dict()})
+    updated_item = db.inventory.find_one({"_id": oid})
+    return {
+        "id": str(updated_item["_id"]),
+        "name": updated_item["name"],
+        "description": updated_item["description"],
+        "price": updated_item["price"],
+        "quantity": updated_item["quantity"]
+    }
 
 @app.delete("/inventory/{item_id}")
-def delete_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(admin_required)):
-    item = db.query(Inventory).get(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    db.delete(item)
-    db.commit()
+def delete_item(item_id: int, current_user: dict = Depends(admin_required)):
+    try: 
+        oid = ObjectId(item_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid item ID")
+    
+    result = db.inventory.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found.")
     return {"message": "Item deleted successfully"}
