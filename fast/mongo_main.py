@@ -16,7 +16,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 client = MongoClient(MONGO_URL)
-db = client["inventory_db"]
+db = client["grocery_management"]
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
