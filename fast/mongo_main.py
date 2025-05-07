@@ -152,6 +152,15 @@ def add_item(item: ItemCreate, current_user: dict = Depends(admin_required)):
     if db.inventory.find_one({"name": item_dict["name"], "user_id": item_dict["user_id"]}):
         raise HTTPException(status_code=400, detail="Item already exists for this user.")
     
+    if not isinstance(item_dict["name"], str):
+        raise HTTPException(status_code=400, detail="Item name must be a string.")
+    if not isinstance(item_dict["description"], str):
+        raise HTTPException(status_code=400, detail="Item description must be a string.")
+    if not isinstance(item_dict["price"], float):
+        raise HTTPException(status_code=400, detail="Item price must be a numerical value.")
+    if not isinstance(item_dict["quantity"], int):
+        raise HTTPException(status_code=400, detail="Item quantity must be a string.")
+    
     db.inventory.insert_one(item_dict)
     return {
         "id": item_dict["id"],
@@ -205,6 +214,16 @@ def update_item(item_id: int, updated: ItemCreate, current_user: dict = Depends(
     
     update_data = updated.dict()
     update_data["user_id"] = str(current_user["_id"])
+
+    if not isinstance(update_data["name"], str):
+        raise HTTPException(status_code=400, detail="Item name must be a string.")
+    if not isinstance(update_data["description"], str):
+        raise HTTPException(status_code=400, detail="Item description must be a string.")
+    if not isinstance(update_data["price"], float):
+        raise HTTPException(status_code=400, detail="Item price must be a numerical value.")
+    if not isinstance(update_data["quantity"], int):
+        raise HTTPException(status_code=400, detail="Item quantity must be a string.")
+
     db.inventory.update_one(query, {"$set": update_data})
     updated_item = db.inventory.find_one(query)
     return {
