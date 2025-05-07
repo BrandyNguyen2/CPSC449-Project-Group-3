@@ -156,7 +156,7 @@ def add_item(item: ItemCreate, current_user: dict = Depends(admin_required)):
         raise HTTPException(status_code=400, detail="Item name must be a string.")
     if not isinstance(item_dict["description"], str):
         raise HTTPException(status_code=400, detail="Item description must be a string.")
-    if not isinstance(item_dict["price"], float):
+    if not isinstance(item_dict["price"], (int, float)):
         raise HTTPException(status_code=400, detail="Item price must be a numerical value.")
     if not isinstance(item_dict["quantity"], int):
         raise HTTPException(status_code=400, detail="Item quantity must be a string.")
