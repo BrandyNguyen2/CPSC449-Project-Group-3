@@ -23,6 +23,8 @@ When JWT Token is generated upon logging in (in Postman):
 ### Requirements for FastAPI app:
 - Latest Python version
 - Install requirements.txt dependencies
+- MongoDB Compass
+- MySQL Workbench
 
 ## How to run for FastAPI app:
 1. ```cd fast```
